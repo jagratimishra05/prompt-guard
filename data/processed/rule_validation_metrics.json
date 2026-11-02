@@ -1,0 +1,24 @@
+{
+    "detector": "Rule-based",
+    "dataset": "Validation",
+    "total_examples": 2101,
+    "accuracy": 0.6544502617801047,
+    "precision": 0.9969418960244648,
+    "recall": 0.31018078020932444,
+    "f1_score": 0.4731494920174166,
+    "false_positive_rate": 0.0009523809523809524,
+    "confusion_matrix": [
+        [
+            1049,
+            1
+        ],
+        [
+            725,
+            326
+        ]
+    ],
+    "true_negatives": 1049,
+    "false_positives": 1,
+    "false_negatives": 725,
+    "true_positives": 326
+}
