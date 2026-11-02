@@ -11,15 +11,16 @@ def test_disabled_contextual_analysis_is_skipped():
     assert result["prediction"] is None
 
 
-def test_enabled_without_provider_is_not_fabricated():
+def test_enabled_contextual_analysis_uses_horizon():
     result = analyze_context(
         "Summarize this document.",
         enabled=True,
     )
 
-    assert result["status"] == "skipped"
-    assert result["prediction"] is None
-    assert "no real" in result["reason"].lower()
+    assert result["status"] == "completed"
+    assert result["prediction"] in {"malicious", "benign"}
+    assert result["provider"] == "horizon"
+    assert isinstance(result["score"], float)
 
 
 def test_empty_content_is_rejected():

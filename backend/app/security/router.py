@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -9,13 +8,11 @@ def route_detectors(
     contextual_enabled: bool = False,
 ) -> dict[str, Any]:
     """
-    Select detectors adaptively.
+    Select detectors for PromptGuard.
 
-    Stage 1: Always run the rule detector.
-    Stage 2: Run ML when rule evidence indicates suspicion,
-             when the rule result is uncertain, or when no
-             rule result has been supplied yet.
-    Stage 3: Contextual analysis is optional.
+    Stage 1: Run rules first.
+    Stage 2: Run ML for additional assessment.
+    Stage 3: Optionally run Horizon contextual analysis.
 
     This function selects detectors; it does not execute them.
     """
@@ -26,7 +23,7 @@ def route_detectors(
     if not content.strip():
         raise ValueError("content must not be empty")
 
-    # No preliminary result means the rule detector must run first.
+    # The rule detector must run first.
     if rule_result is None:
         return {
             "detectors": {
@@ -43,10 +40,13 @@ def route_detectors(
 
     status = rule_result.get("status")
     prediction = rule_result.get("prediction")
-    evidence = rule_result.get("evidence", [])
 
-    # Never assume a failed or skipped rule detector means benign.
-    if status != "completed":
+    # An invalid, failed, or skipped rule result must not
+    # be interpreted as evidence that the content is benign.
+    if (
+        status != "completed"
+        or prediction not in {"malicious", "benign"}
+    ):
         return {
             "detectors": {
                 "rule": False,
@@ -55,49 +55,30 @@ def route_detectors(
             },
             "next_step": "run_ml",
             "reason": (
-                "Rule detector did not complete; use ML as an "
-                "additional signal and handle uncertainty safely."
+                "Rule screening is incomplete or uncertain. "
+                "Run additional detectors and preserve uncertainty."
             ),
         }
 
-    if prediction not in {"malicious", "benign"}:
-        return {
-            "detectors": {
-                "rule": False,
-                "ml": True,
-                "contextual": contextual_enabled,
-            },
-            "next_step": "run_ml",
-            "reason": "Rule result is uncertain; run ML.",
-        }
+    # Continue to ML even when the rule detector says benign.
+    # This avoids relying on rules alone to detect attacks.
+    if prediction == "malicious":
+        reason = (
+            "Rule detector identified suspicious content. "
+            "Run ML and any enabled contextual analysis."
+        )
+    else:
+        reason = (
+            "Rule detector found no suspicious indicators. "
+            "Run ML because a benign rule result does not guarantee safety."
+        )
 
-    # Suspicious evidence or a malicious prediction triggers ML.
-    if prediction == "malicious" or evidence:
-        return {
-            "detectors": {
-                "rule": False,
-                "ml": True,
-                "contextual": contextual_enabled,
-            },
-            "next_step": "run_ml",
-            "reason": (
-                "Rule detector found suspicious evidence; "
-                "run ML for additional assessment."
-            ),
-        }
-
-    # Fast path: rule detector returned benign with no evidence.
-    # This optimization must be evaluated against an all-detectors
-    # baseline before being enabled in a production security system.
     return {
         "detectors": {
             "rule": False,
-            "ml": False,
-            "contextual": False,
+            "ml": True,
+            "contextual": contextual_enabled,
         },
-        "next_step": "assess_risk",
-        "reason": (
-            "Rule detector found no suspicious evidence. "
-            "Fast path selected; this is not a guarantee of safety."
-        ),
+        "next_step": "run_ml",
+        "reason": reason,
     }

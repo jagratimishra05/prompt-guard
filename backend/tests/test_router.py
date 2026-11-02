@@ -38,10 +38,9 @@ def test_failed_rule_result_does_not_assume_benign():
 
     assert result["detectors"]["ml"] is True
 
-
-def test_benign_rule_result_selects_fast_path():
+def test_benign_rule_result_still_runs_ml():
     result = route_detectors(
-        "The weather is pleasant.",
+        "Explain Python lists.",
         {
             "status": "completed",
             "prediction": "benign",
@@ -49,8 +48,8 @@ def test_benign_rule_result_selects_fast_path():
         },
     )
 
-    assert result["detectors"]["ml"] is False
-    assert result["next_step"] == "assess_risk"
+    assert result["detectors"]["ml"] is True
+    assert result["next_step"] == "run_ml"
 
 
 def test_empty_content_is_rejected():

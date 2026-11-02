@@ -1,6 +1,8 @@
 
 from typing import Any
 
+from app.security.horizon_detector import detect_prompt_injection
+
 
 def analyze_context(
     content: str,
@@ -8,11 +10,11 @@ def analyze_context(
     enabled: bool = False,
 ) -> dict[str, Any]:
     """
-    Return a standardized contextual detector result.
+    Run contextual analysis using the Horizon prompt-injection detector.
 
-    This initial implementation is offline-first. It does not call
-    a real LLM. When disabled, it reports that contextual analysis
-    was skipped rather than pretending the content is benign.
+    When disabled, report skipped.
+    When enabled, normalize Horizon's result into PromptGuard's
+    standard contextual detector format.
     """
 
     if not isinstance(content, str):
@@ -29,14 +31,31 @@ def analyze_context(
             "provider": None,
         }
 
-    # No real contextual model is configured in this initial version.
-    # Do not fabricate a prediction or claim that a model was called.
+    result = detect_prompt_injection(content)
+
+    # Do not treat failed or unexpected results as benign.
+    if (
+        result.get("status") != "completed"
+        or result.get("prediction") not in {"malicious", "benign"}
+    ):
+        return {
+            "status": "failed",
+            "prediction": None,
+            "reason": result.get(
+                "reason",
+                "Horizon contextual analysis did not complete successfully.",
+            ),
+            "provider": "horizon",
+        }
+
     return {
-        "status": "skipped",
-        "prediction": None,
-        "reason": (
-            "Contextual analysis was requested, but no real "
-            "contextual model provider is configured."
+        "status": "completed",
+        "prediction": result["prediction"],
+        "reason": result.get(
+            "reason",
+            "Classification returned by the Horizon model.",
         ),
-        "provider": None,
+        "provider": "horizon",
+        "score": result.get("score"),
+        "model_label": result.get("model_label"),
     }
