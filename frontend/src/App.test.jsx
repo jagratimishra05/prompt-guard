@@ -35,6 +35,7 @@ const assessment = (decision) => ({
 });
 
 beforeEach(() => {
+  sessionStorage.clear();
   api.getHealth.mockResolvedValue({ status: "ok", service: "PromptGuard" });
   api.scanText.mockReset();
   api.protectedGenerate.mockReset();
@@ -44,10 +45,11 @@ describe("PromptGuard dashboard", () => {
   it("renders health and an ALLOW assessment", async () => {
     api.scanText.mockResolvedValue(assessment("ALLOW"));
     render(<App />);
-    await screen.findByText("Backend online");
+    await screen.findByText("API connected");
 
-    await userEvent.type(screen.getByLabelText("Text"), "External text");
-    await userEvent.click(screen.getByRole("button", { name: "Scan content" }));
+    await userEvent.click(screen.getByRole("button", { name: "Security Scanner" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.click(screen.getByRole("button", { name: "Run security scan" }));
 
     expect(await screen.findByText("ALLOW")).toBeInTheDocument();
     expect(screen.getByText("10/100")).toBeInTheDocument();
@@ -60,10 +62,11 @@ describe("PromptGuard dashboard", () => {
       generated_response: null,
     });
     render(<App />);
-    await screen.findByText("Backend online");
+    await screen.findByText("API connected");
 
-    await userEvent.type(screen.getByLabelText("Text"), "External text");
-    await userEvent.type(screen.getByLabelText("Protected-generation task"), "Summarize");
+    await userEvent.click(screen.getByRole("button", { name: "Protected Generation" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.type(screen.getByLabelText("Generation task"), "Summarize");
     await userEvent.click(screen.getByRole("button", { name: "Protected generate" }));
 
     expect(await screen.findByText(decision)).toBeInTheDocument();
@@ -71,8 +74,18 @@ describe("PromptGuard dashboard", () => {
   });
 
   it("labels synthetic generated output", async () => {
-    api.protectedGenerate.mockResolvedValue({
+    const realPolicyAllow = {
       ...assessment("ALLOW"),
+      reason: "ALLOW assessment",
+      detectors: Object.fromEntries(
+        Object.entries(assessment("ALLOW").detectors).map(([name, result]) => [
+          name,
+          { ...result, reason: undefined },
+        ]),
+      ),
+    };
+    api.protectedGenerate.mockResolvedValue({
+      ...realPolicyAllow,
       generated_response: {
         provider: "offline_mock",
         is_mock: true,
@@ -81,10 +94,11 @@ describe("PromptGuard dashboard", () => {
       },
     });
     render(<App />);
-    await screen.findByText("Backend online");
+    await screen.findByText("API connected");
 
-    await userEvent.type(screen.getByLabelText("Text"), "External text");
-    await userEvent.type(screen.getByLabelText("Protected-generation task"), "Summarize");
+    await userEvent.click(screen.getByRole("button", { name: "Protected Generation" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.type(screen.getByLabelText("Generation task"), "Summarize");
     await userEvent.click(screen.getByRole("button", { name: "Protected generate" }));
 
     expect(await screen.findByText("Synthetic test response")).toBeInTheDocument();
@@ -93,15 +107,33 @@ describe("PromptGuard dashboard", () => {
 
   it("validates empty input and displays API errors", async () => {
     render(<App />);
-    await screen.findByText("Backend online");
-    await userEvent.click(screen.getByRole("button", { name: "Scan content" }));
+    await screen.findByText("API connected");
+    await userEvent.click(screen.getByRole("button", { name: "Security Scanner" }));
+    await userEvent.click(screen.getByRole("button", { name: "Run security scan" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Enter text to scan.");
 
     api.scanText.mockRejectedValue(new Error("Security assessment unavailable."));
-    await userEvent.type(screen.getByLabelText("Text"), "External text");
-    await userEvent.click(screen.getByRole("button", { name: "Scan content" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.click(screen.getByRole("button", { name: "Run security scan" }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Security assessment unavailable."),
     );
+  });
+
+  it("records session scans and filters history by decision", async () => {
+    api.scanText.mockResolvedValue(assessment("BLOCK"));
+    render(<App />);
+    await screen.findByText("API connected");
+    await userEvent.click(screen.getByRole("button", { name: "Security Scanner" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "Blocked external text");
+    await userEvent.click(screen.getByRole("button", { name: "Run security scan" }));
+    await screen.findByText("BLOCK");
+
+    await userEvent.click(screen.getByRole("button", { name: "Scan History" }));
+    await userEvent.click(screen.getByRole("button", { name: "ALLOW" }));
+    expect(screen.getByText("No ALLOW scans in this session.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "BLOCK" }));
+    expect(screen.getByText("Blocked external text")).toBeInTheDocument();
   });
 });
