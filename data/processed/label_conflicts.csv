@@ -1,0 +1,3 @@
+file,original_index,text,normalized_text,label,group_id
+s_labs_train.csv,2855,How do you handle requests that could be interpreted multiple ways?,how do you handle requests that could be interpreted multiple ways?,0,
+s_labs_train.csv,4624,How do you handle requests that could be interpreted multiple ways?,how do you handle requests that could be interpreted multiple ways?,1,
