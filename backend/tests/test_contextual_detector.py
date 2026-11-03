@@ -1,5 +1,6 @@
 
 import pytest
+from importlib.util import find_spec
 
 from app.security.contextual_detector import analyze_context
 
@@ -11,6 +12,10 @@ def test_disabled_contextual_analysis_is_skipped():
     assert result["prediction"] is None
 
 
+@pytest.mark.skipif(
+    find_spec("transformers") is None,
+    reason="Optional Horizon dependency 'transformers' is not installed.",
+)
 def test_enabled_contextual_analysis_uses_horizon():
     result = analyze_context(
         "Summarize this document.",

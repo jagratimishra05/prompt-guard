@@ -8,6 +8,7 @@ from .providers.llm_provider import (
     MockTargetLLMProvider,
     TargetLLMProvider,
     TargetLLMProviderError,
+    get_target_llm_provider,
 )
 from .schemas import (
     ErrorResponse,
@@ -29,8 +30,14 @@ def create_app(
     scan_service: ScanService | None = None,
     target_provider: TargetLLMProvider | None = None,
 ) -> FastAPI:
+    # No assessor means the real Member 1/2 pipeline; injected mock assessors
+    # remain explicitly available to tests through ScanService.
     service = scan_service if scan_service is not None else ScanService()
-    provider = target_provider if target_provider is not None else MockTargetLLMProvider()
+    provider = (
+        target_provider
+        if target_provider is not None
+        else get_target_llm_provider()
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

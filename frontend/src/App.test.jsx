@@ -105,6 +105,77 @@ describe("PromptGuard dashboard", () => {
     expect(screen.getByText(/Synthetic mock output/)).toBeInTheDocument();
   });
 
+  it("labels and displays Gemini generated output", async () => {
+    const realPolicyAllow = assessment("ALLOW");
+    api.protectedGenerate.mockResolvedValue({
+      ...realPolicyAllow,
+      reason: "Completed security assessment permits generation.",
+      detectors: Object.fromEntries(
+        Object.entries(realPolicyAllow.detectors).map(([name, result]) => [
+          name,
+          {
+            ...result,
+            reason: result.reason?.includes("Temporary mock")
+              ? undefined
+              : result.reason,
+          },
+        ]),
+      ),
+      generated_response: {
+        provider: "google_gemini",
+        is_mock: false,
+        is_synthetic: false,
+        text: "Gemini generated summary",
+      },
+    });
+    render(<App />);
+    await screen.findByText("API connected");
+
+    await userEvent.click(screen.getByRole("button", { name: "Protected Generation" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "Approved text");
+    await userEvent.type(screen.getByLabelText("Generation task"), "Summarize");
+    await userEvent.click(screen.getByRole("button", { name: "Protected generate" }));
+
+    expect(await screen.findByText("Gemini generated summary")).toBeInTheDocument();
+    expect(screen.getByText("Google Gemini")).toBeInTheDocument();
+  });
+
+  it("displays protected-generation API errors", async () => {
+    api.protectedGenerate.mockRejectedValue(new Error("Gemini provider request failed."));
+    render(<App />);
+    await screen.findByText("API connected");
+
+    await userEvent.click(screen.getByRole("button", { name: "Protected Generation" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.type(screen.getByLabelText("Generation task"), "Summarize");
+    await userEvent.click(screen.getByRole("button", { name: "Protected generate" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Gemini provider request failed."),
+    );
+    expect(screen.queryByText("Target provider response")).not.toBeInTheDocument();
+  });
+
+  it("exits protected-generation loading after a timeout", async () => {
+    api.protectedGenerate.mockRejectedValue(
+      Object.assign(new Error("The operation was aborted."), { name: "AbortError" }),
+    );
+    render(<App />);
+    await screen.findByText("API connected");
+
+    await userEvent.click(screen.getByRole("button", { name: "Protected Generation" }));
+    await userEvent.type(screen.getByLabelText("Text to analyze"), "External text");
+    await userEvent.type(screen.getByLabelText("Generation task"), "Summarize");
+    await userEvent.click(screen.getByRole("button", { name: "Protected generate" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Protected generation timed out.",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Protected generate" })).toBeEnabled();
+  });
+
   it("validates empty input and displays API errors", async () => {
     render(<App />);
     await screen.findByText("API connected");

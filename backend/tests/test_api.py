@@ -76,6 +76,24 @@ class FailingProvider(TargetLLMProvider):
         raise RuntimeError("provider unavailable")
 
 
+class CountingGeminiProvider(TargetLLMProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    @property
+    def is_mock(self) -> bool:
+        return False
+
+    async def generate(self, text: str, task: str) -> TargetLLMResponse:
+        self.calls += 1
+        return TargetLLMResponse(
+            provider="google_gemini",
+            is_mock=False,
+            is_synthetic=False,
+            text="Gemini response",
+        )
+
+
 def client_for(
     decision: Decision,
     provider: TargetLLMProvider | None = None,
@@ -193,7 +211,10 @@ def test_target_provider_failure_returns_structured_error() -> None:
 
 def test_default_security_mock_never_enables_generation() -> None:
     provider = CountingProvider()
-    app = create_app(target_provider=provider)
+    app = create_app(
+        scan_service=ScanService(is_temporary_mock=True),
+        target_provider=provider,
+    )
     with TestClient(app) as client:
         scan = client.post("/v1/scan", json={"text": "External text"})
         protected = client.post(
@@ -225,3 +246,23 @@ def test_mock_security_allow_never_calls_provider() -> None:
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "MOCK_SECURITY_ASSESSMENT"
     assert provider.calls == 0
+
+
+def test_gemini_provider_is_not_called_for_review_or_block() -> None:
+    for decision in (Decision.REVIEW, Decision.BLOCK):
+        provider = CountingGeminiProvider()
+        service = ScanService(
+            lambda text, decision=decision: assessment(decision),
+            is_temporary_mock=False,
+        )
+        app = create_app(scan_service=service, target_provider=provider)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/v1/protected-generate",
+                json={"text": "Suspicious text", "task": "Summarize"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["generated_response"] is None
+        assert provider.calls == 0

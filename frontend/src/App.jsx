@@ -46,6 +46,17 @@ function mockDetectorReason(detectors) {
   );
 }
 
+function providerLabel(response) {
+  if (!response) return "Target provider not used";
+  if (response.is_mock || response.is_synthetic || response.provider === "offline_mock") {
+    return "Synthetic mock provider";
+  }
+  if (response.provider === "google_gemini") {
+    return "Google Gemini";
+  }
+  return response.provider || "Configured target provider";
+}
+
 function DecisionBadge({ decision }) {
   return (
     <span className={`decision decision-${String(decision).toLowerCase()}`}>
@@ -314,8 +325,10 @@ function ContentWorkbench({ mode, assessment, setAssessment, onRecord }) {
       return;
     }
     setLoading("generate");
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
     try {
-      const result = await protectedGenerate(text, task);
+      const result = await protectedGenerate(text, task, controller.signal);
       setAssessment(result);
       const isMockAssessment = mockDetectorReason(result.detectors);
       if (result.decision === "ALLOW" && !isMockAssessment && result.generated_response) {
@@ -323,8 +336,13 @@ function ContentWorkbench({ mode, assessment, setAssessment, onRecord }) {
       }
       onRecord(result, text);
     } catch (generateError) {
-      setError(generateError.message);
+      setError(
+        generateError.name === "AbortError"
+          ? "Protected generation timed out. Please try again."
+          : generateError.message,
+      );
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading("");
     }
   };
@@ -421,6 +439,9 @@ function ContentWorkbench({ mode, assessment, setAssessment, onRecord }) {
               </div>
               {(generated.is_mock || generated.is_synthetic) && (
                 <p className="warning" role="note">Synthetic mock output. No real target LLM response was generated.</p>
+              )}
+              {!generated.is_mock && !generated.is_synthetic && (
+                <p className="provider-badge" role="note">{providerLabel(generated)}</p>
               )}
               <p className="generated-text">{generated.text}</p>
             </section>
@@ -614,7 +635,7 @@ function Settings({ health, apiBase, history }) {
             </div>
             <div>
               <dt>Target provider</dt>
-              <dd>{latestTargetResponse ? (latestTargetResponse.is_mock || latestTargetResponse.is_synthetic ? "Synthetic mock" : "Configured provider") : "Not used yet"}</dd>
+              <dd>{providerLabel(latestTargetResponse)}</dd>
             </div>
           </dl>
         </section>

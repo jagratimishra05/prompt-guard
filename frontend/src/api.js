@@ -26,8 +26,9 @@ export const scanText = (text) =>
     body: JSON.stringify({ text }),
   });
 
-export const protectedGenerate = (text, task) =>
+export const protectedGenerate = (text, task, signal) =>
   request("/v1/protected-generate", {
     method: "POST",
     body: JSON.stringify({ text, task }),
+    signal,
   });
